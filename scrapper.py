@@ -8,12 +8,15 @@ from concurrent.futures import ThreadPoolExecutor
 # URL to scrape
 url = "https://www.gutenberg.org/browse/scores/top"
 
+# Directory for downloaded PDFs
+downloads_dir = "./downloads"
+fonts_dir = "./fonts"
+
 # Send a GET request to the website
 response = requests.get(url)
 
 # Parse the HTML content using BeautifulSoup
 soup = BeautifulSoup(response.content, 'html.parser')
-fonts_dir = "./fonts"
 
 # Function to scrape the "Top 100 EBooks yesterday" section
 def scrape_top_ebooks():
@@ -36,6 +39,16 @@ def download_and_convert_to_pdf(ebook):
     book_code = ebook['link'].split('/')[-1]  # Extract the book code from the link
     text_url = f"https://www.gutenberg.org/ebooks/{book_code}.txt.utf-8"
     
+    # Create a PDF filename
+    pdf_filename = f"{ebook['title']}.pdf"
+    pdf_filename = "".join([c for c in pdf_filename if c.isalpha() or c.isdigit() or c == ' ']).rstrip() + ".pdf"
+    pdf_filepath = os.path.join(downloads_dir, pdf_filename)
+    
+    # Check if the file already exists
+    if os.path.exists(pdf_filepath):
+        print(f"Already downloaded: {pdf_filepath}")
+        return
+    
     # Send a GET request to download the text content
     text_response = requests.get(text_url)
     
@@ -57,16 +70,11 @@ def download_and_convert_to_pdf(ebook):
         for line in text_content.splitlines():
             pdf.multi_cell(0, 10, line)
         
-        # Save the PDF file with the book title as the name
-        pdf_filename = f"{ebook['title']}.pdf"
-        pdf_filename = "".join([c for c in pdf_filename if c.isalpha() or c.isdigit() or c == ' ']).rstrip() + ".pdf"
-        
         # Ensure the filename is unique
-        pdf_filename = os.path.join("downloads", pdf_filename)
-        os.makedirs(os.path.dirname(pdf_filename), exist_ok=True)
+        os.makedirs(os.path.dirname(pdf_filepath), exist_ok=True)
         
-        pdf.output(pdf_filename)
-        print(f"Downloaded and converted: {pdf_filename}")
+        pdf.output(pdf_filepath)
+        print(f"Downloaded and converted: {pdf_filepath}")
     else:
         print(f"Failed to download text for: {ebook['title']}")
 
