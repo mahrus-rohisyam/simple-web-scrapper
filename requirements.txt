@@ -1,2 +1,4 @@
 FPDF
 tqdm
+requests
+BeautifulSoup
