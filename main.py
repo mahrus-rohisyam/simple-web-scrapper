@@ -1,6 +1,9 @@
 import os
+import queue
+import threading
 from datetime import datetime
 from fpdf import FPDF
+from tqdm import tqdm  # Progress bar for better user feedback
 
 # Create a PDF class instance
 class PDF(FPDF):
@@ -21,25 +24,30 @@ current_date = datetime.now().strftime("%Y%m%d")
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-# Create a PDF instance
-pdf = PDF()
-
 # Path to your fonts directory
 fonts_dir = "./fonts"
 
-# Add a Unicode font from the fonts directory
-pdf.add_font("DejaVu", "", os.path.join(fonts_dir, "DejaVuSans.ttf"), uni=True)
-pdf.add_font("DejaVu", "B", os.path.join(fonts_dir, "DejaVuSans-Bold.ttf"), uni=True)
-pdf.add_font("DejaVu", "I", os.path.join(fonts_dir, "DejaVuSans-Oblique.ttf"), uni=True)
+# Initialize a queue
+file_queue = queue.Queue()
 
-# Iterate through all .txt files in the /sample directory
-for filename in os.listdir(input_dir):
-    if filename.endswith(".txt"):
+# Worker function to process files
+def process_file():
+    while True:
+        filename = file_queue.get()
+        if filename is None:
+            break  # Stop the thread if None is received
+
+        # Create a PDF instance for each file to ensure thread safety
+        pdf = PDF()
+        pdf.add_font("DejaVu", "", os.path.join(fonts_dir, "DejaVuSans.ttf"), uni=True)
+        pdf.add_font("DejaVu", "B", os.path.join(fonts_dir, "DejaVuSans-Bold.ttf"), uni=True)
+        pdf.add_font("DejaVu", "I", os.path.join(fonts_dir, "DejaVuSans-Oblique.ttf"), uni=True)
+
         # Read the text from the current .txt file with UTF-8 encoding
         with open(os.path.join(input_dir, filename), "r", encoding="utf-8") as file:
             text = file.read()
 
-        # Add a new page for each file
+        # Add a new page and set font
         pdf.add_page()
         pdf.set_font("DejaVu", size=12)
 
@@ -54,4 +62,39 @@ for filename in os.listdir(input_dir):
         # Save the PDF
         pdf.output(output_path)
 
-        print(f"Converted {filename} to {output_filename}")
+        # Mark task as done
+        file_queue.task_done()
+        tqdm.write(f"Converted {filename} to {output_filename}")
+
+# List of all .txt files in the input directory
+txt_files = [f for f in os.listdir(input_dir) if f.endswith(".txt")]
+
+# Progress bar for the queuing process
+progress_bar = tqdm(total=len(txt_files), desc="Queueing files", unit="file")
+
+# Start worker threads
+num_worker_threads = 4
+threads = []
+for _ in range(num_worker_threads):
+    thread = threading.Thread(target=process_file)
+    thread.start()
+    threads.append(thread)
+
+# Enqueue files
+for filename in txt_files:
+    file_queue.put(filename)
+    progress_bar.update(1)
+
+# Wait for all files to be processed
+file_queue.join()
+
+# Stop workers
+for _ in range(num_worker_threads):
+    file_queue.put(None)
+
+for thread in threads:
+    thread.join()
+
+progress_bar.close()
+
+print("All files have been converted.")
